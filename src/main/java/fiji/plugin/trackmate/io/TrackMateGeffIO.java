@@ -75,7 +75,6 @@ public class TrackMateGeffIO
 		final List< Set< Spot > > trackSpots = inspector.connectedSets();
 		System.out.println( "Found " + trackSpots.size() + " tracks." );
 
-
 		final Map< Integer, Set< Spot > > trackSpotsMap = new HashMap<>();
 		final Map< Integer, Set< DefaultWeightedEdge > > trackEdgesMap = new HashMap<>();
 		final Map< Integer, Boolean > trackVisibility = new HashMap<>();
@@ -206,13 +205,11 @@ public class TrackMateGeffIO
 
 		// Serialize edges.
 		final TrackModel trackModel = model.getTrackModel();
+		serializeEdges( trackModel, featureModel, outputZarrPath );
+
 		final Set< Integer > trackIDs = trackModel.unsortedTrackIDs( false );
 		for ( final Integer trackID : trackIDs )
 		{
-			final Set< DefaultWeightedEdge > edges = trackModel.trackEdges( trackID );
-			// FIXME: This OVERWRITES the edges of the previous track.
-			serializeEdges( edges, trackID, trackModel, featureModel, outputZarrPath );
-
 			/*
 			 * Write what tracks are marked as visible and serialize their
 			 * features.
@@ -281,17 +278,26 @@ public class TrackMateGeffIO
 		return max;
 	}
 
-	private static void serializeEdges( final Iterable< DefaultWeightedEdge > edges, final Integer trackID, final TrackModel trackModel, final FeatureModel featureModel, final String outputZarrPath )
+	private static void serializeEdges(
+			final TrackModel trackModel,
+			final FeatureModel featureModel,
+			final String outputZarrPath )
 	{
 		final List< GeffEdge > geffEdges = new ArrayList<>();
-		for ( final DefaultWeightedEdge edge : edges )
+		final Set< Integer > trackIDs = trackModel.trackIDs( false );
+
+		for ( final Integer trackID : trackIDs )
 		{
-			final Spot source = trackModel.getEdgeSource( edge );
-			final int sourceId = source.ID();
-			final Spot target = trackModel.getEdgeTarget( edge );
-			final int targetId = target.ID();
-			final GeffEdge geffEdge = new GeffEdge( sourceId, targetId );
-			geffEdges.add( geffEdge );
+			final Set< DefaultWeightedEdge > edges = trackModel.trackEdges( trackID );
+			for ( final DefaultWeightedEdge edge : edges )
+			{
+				final Spot source = trackModel.getEdgeSource( edge );
+				final int sourceId = source.ID();
+				final Spot target = trackModel.getEdgeTarget( edge );
+				final int targetId = target.ID();
+				final GeffEdge geffEdge = new GeffEdge( sourceId, targetId );
+				geffEdges.add( geffEdge );
+			}
 		}
 		try
 		{
