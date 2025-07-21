@@ -1,5 +1,6 @@
 package fiji.plugin.trackmate.io;
 
+import java.awt.Color;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -12,9 +13,12 @@ import java.util.Set;
 import org.jgrapht.alg.connectivity.ConnectivityInspector;
 import org.jgrapht.graph.DefaultWeightedEdge;
 import org.jgrapht.graph.SimpleWeightedGraph;
+import org.mastodon.geff.GeffAxis;
 import org.mastodon.geff.GeffEdge;
 import org.mastodon.geff.GeffMetadata;
 import org.mastodon.geff.GeffNode;
+import org.mastodon.geff.GeffNode.Builder;
+import org.mastodon.geff.ZarrUtils;
 
 import fiji.plugin.trackmate.Dimension;
 import fiji.plugin.trackmate.FeatureModel;
@@ -22,6 +26,7 @@ import fiji.plugin.trackmate.Model;
 import fiji.plugin.trackmate.Spot;
 import fiji.plugin.trackmate.SpotCollection;
 import fiji.plugin.trackmate.TrackModel;
+import fiji.plugin.trackmate.features.manual.ManualSpotColorAnalyzerFactory;
 import ucar.ma2.InvalidRangeException;
 
 public class TrackMateGeffIO
@@ -35,10 +40,10 @@ public class TrackMateGeffIO
 		try
 		{
 			final GeffMetadata metadata = GeffMetadata.readFromZarr( inputZarrPath );
-			final int xAxis = findSpatialAxis( metadata.getAxisNames() );
-			final String spaceUnits = metadata.getAxisUnits()[ xAxis ];
-			final int tAxis = findTemporalAxis( metadata.getAxisNames() );
-			final String timeUnits = metadata.getAxisUnits()[ tAxis ];
+			final int xAxis = findSpatialAxis( metadata.getGeffAxes() );
+			final String spaceUnits = metadata.getGeffAxes()[ xAxis ].getUnit();
+			final int tAxis = findTemporalAxis( metadata.getGeffAxes() );
+			final String timeUnits = metadata.getGeffAxes()[ tAxis ].getUnit();
 			model.setPhysicalUnits( spaceUnits, timeUnits );
 		}
 		catch ( IOException | InvalidRangeException e )
@@ -120,7 +125,8 @@ public class TrackMateGeffIO
 			final int targetId = geffEdge.getTargetNodeId();
 			final Spot sourceSpot = spotMap.get( sourceId );
 			final Spot targetSpot = spotMap.get( targetId );
-			final double weight = 1.; // TODO
+			final double d = geffEdge.getDistance();
+			final double weight = d * d;
 
 			if ( sourceSpot != null && targetSpot != null )
 			{
@@ -142,9 +148,9 @@ public class TrackMateGeffIO
 			final double x = node.getX();
 			final double y = node.getY();
 			final double z = node.getZ();
-			final int tp = node.getTimepoint();
+			final int tp = node.getT();
 			final int segmentId = node.getSegmentId(); // TODO
-			final double r = 5.; // TODO: How to get the radius?
+			final double r = node.getRadius();
 			// TODO other features?
 
 			final Spot spot = new Spot( id );
@@ -167,22 +173,22 @@ public class TrackMateGeffIO
 		return spots;
 	}
 
-	private static int findTemporalAxis( final String[] axisNames )
+	private static int findTemporalAxis( final GeffAxis[] axes )
 	{
-		for ( int d = 0; d < axisNames.length; d++ )
+		for ( int d = 0; d < axes.length; d++ )
 		{
-			final String name = axisNames[ d ].toLowerCase().trim();
+			final String name = axes[ d ].getName().toLowerCase().trim();
 			if ( name.equals( "t" ) || name.equals( "time" ) )
 				return d;
 		}
 		return -1;
 	}
 
-	private static int findSpatialAxis( final String[] axisNames )
+	private static int findSpatialAxis( final GeffAxis[] axes )
 	{
-		for ( int d = 0; d < axisNames.length; d++ )
+		for ( int d = 0; d < axes.length; d++ )
 		{
-			final String name = axisNames[ d ].toLowerCase().trim();
+			final String name = axes[ d ].getName().toLowerCase().trim();
 			if ( name.equals( "x" ) || name.equals( "y" ) || name.equals( "z" ) )
 				return d;
 		}
@@ -222,14 +228,19 @@ public class TrackMateGeffIO
 		serializeFeatureDeclarations( featureModel );
 
 		// GEFF metadata.
-		final String version = "0.1.0";
+		final String version = "0.3.0";
 		final boolean directed = true;
 		final double[] roiMin = getRoiMin( model.getSpots().iterable( false ) );
 		final double[] roiMax = getRoiMax( model.getSpots().iterable( false ) );
-		final String positionAttr = "position"; // TODO What should I put here?
 		final String[] axisNames = new String[] { "x", "y", "z", "t" };
-		final String[] axisUnits = new String[] { model.getSpaceUnits(), model.getSpaceUnits(), model.getSpaceUnits(), model.getTimeUnits() };
-		final GeffMetadata metadata = new GeffMetadata( version, directed, roiMin, roiMax, positionAttr, axisNames, axisUnits );
+		final String spaceUnits = model.getSpaceUnits();
+		final String timeUnits = model.getTimeUnits();
+		final GeffAxis[] axes = new GeffAxis[ 4];
+		for ( int d = 0; d < 3; d++ )
+			axes[ d ] = GeffAxis.createSpaceAxis( axisNames[ d ], spaceUnits, roiMin[ d ], roiMax[ d ] );
+		axes[ 3 ] = GeffAxis.createTimeAxis( axisNames[ 3 ], timeUnits, roiMin[ 3 ], roiMax[ 3 ] );
+
+		final GeffMetadata metadata = new GeffMetadata( version, directed, axes );
 		try
 		{
 			GeffMetadata.writeToZarr( metadata, outputZarrPath );
@@ -286,6 +297,7 @@ public class TrackMateGeffIO
 		final List< GeffEdge > geffEdges = new ArrayList<>();
 		final Set< Integer > trackIDs = trackModel.trackIDs( false );
 
+		int id = 0;
 		for ( final Integer trackID : trackIDs )
 		{
 			final Set< DefaultWeightedEdge > edges = trackModel.trackEdges( trackID );
@@ -295,13 +307,15 @@ public class TrackMateGeffIO
 				final int sourceId = source.ID();
 				final Spot target = trackModel.getEdgeTarget( edge );
 				final int targetId = target.ID();
-				final GeffEdge geffEdge = new GeffEdge( sourceId, targetId );
+				final double score = -1.;
+				final double distance = Math.sqrt( trackModel.getEdgeWeight( edge ) );
+				final GeffEdge geffEdge = new GeffEdge( id++, sourceId, targetId, score, distance );
 				geffEdges.add( geffEdge );
 			}
 		}
 		try
 		{
-			GeffEdge.writeToZarr( geffEdges, outputZarrPath + "/edges", GeffEdge.getChunkSize( outputZarrPath ) );
+			GeffEdge.writeToZarr( geffEdges, outputZarrPath + "/edges", ZarrUtils.getChunkSize( outputZarrPath ) );
 		}
 		catch ( IOException | InvalidRangeException e )
 		{
@@ -326,28 +340,50 @@ public class TrackMateGeffIO
 	private static void serializeSpots( final Iterable< Spot > iterable, final TrackModel trackModel, final String outputZarrPath )
 	{
 		final List< GeffNode > nodes = new ArrayList<>();
+		final Builder builder = GeffNode.builder();
 		for ( final Spot spot : iterable )
 		{
-			final int id = spot.ID();
-			final int tp = spot.getFeature( Spot.FRAME ).intValue();
-			final double x = spot.getDoublePosition( 0 );
-			final double y = spot.getDoublePosition( 1 );
-			final double z = spot.getDoublePosition( 2 );
+			final double[] color = new double[ 4 ];
+			getColorFromSpot( spot, color );
 
-			// Segment ID is track ID here. Is it valid? // TODO
 			final Integer segmentIdObj = trackModel.trackIDOf( spot );
 			final int segmentId = segmentIdObj != null ? segmentIdObj : -1;
-			final GeffNode node = new GeffNode( id, tp, x, y, z, segmentId );
+
+			final GeffNode node = builder
+					.x( spot.getDoublePosition( 0 ) )
+					.y( spot.getDoublePosition( 1 ) )
+					.z( spot.getDoublePosition( 2 ) )
+					.timepoint( spot.getFeature( Spot.FRAME ).intValue() )
+					.id( spot.ID() )
+					.radius( spot.getFeature( Spot.RADIUS ).doubleValue() )
+					.color( color )
+					.segmentId( segmentId )
+					.build();
 			nodes.add( node );
 		}
 		try
 		{
-			GeffNode.writeToZarr( nodes, outputZarrPath + "/nodes", GeffNode.getChunkSize( outputZarrPath ) );
+			GeffNode.writeToZarr( nodes, outputZarrPath + "/nodes", ZarrUtils.getChunkSize( outputZarrPath ) );
 		}
 		catch ( IOException | InvalidRangeException e )
 		{
 			e.printStackTrace();
 		}
+	}
+
+	private static void getColorFromSpot( final Spot spot, final double[] color )
+	{
+		final Double val = spot.getFeature( ManualSpotColorAnalyzerFactory.FEATURE );
+		final Color c;
+		if ( null == val )
+			c = Color.GRAY.darker();
+		else
+			c = new Color( val.intValue() );
+
+		color[ 0 ] = c.getRed() / 255.0;
+		color[ 1 ] = c.getGreen() / 255.0;
+		color[ 2 ] = c.getBlue() / 255.0;
+		color[ 3 ] = c.getAlpha() / 255.0;
 	}
 
 	private static void serializeFeatureDeclarations( final FeatureModel fm )
