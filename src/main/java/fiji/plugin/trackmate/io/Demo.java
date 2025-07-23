@@ -86,6 +86,6 @@ public class Demo
 		}
 
 		final Model model = reader.getModel();
-		TrackMateGeffIO.serializeToGeff( model, outputZarrPath );
+		TrackMateGefffWriter.export( model, outputZarrPath );
 	}
 }
