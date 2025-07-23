@@ -21,3 +21,7 @@
 
 ## SciJava release tools
 pom.xml.releaseBackup
+
+## BLOSC
+src/main/resources/*.dylib
+
