@@ -1,12 +1,14 @@
 package fiji.plugin.trackmate.io;
 
 import java.io.File;
+import java.io.IOException;
 
 import fiji.plugin.trackmate.Model;
+import ucar.ma2.InvalidRangeException;
 
 public class DemoPolygons
 {
-	public static void main( final String[] args )
+	public static void main( final String[] args ) throws IOException, InvalidRangeException
 	{
 		final String filename = "samples/ MAX_Merged.xml";
 		final String outputZarrPath = "samples/MAX_Merged.zarr/tracks";

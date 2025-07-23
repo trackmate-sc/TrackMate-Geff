@@ -14,11 +14,12 @@ import fiji.plugin.trackmate.gui.wizard.TrackMateWizardSequence;
 import fiji.plugin.trackmate.visualization.hyperstack.HyperStackDisplayer;
 import ij.ImageJ;
 import ij.ImagePlus;
+import ucar.ma2.InvalidRangeException;
 
 public class Demo
 {
 
-	public static void main( final String[] args ) throws IOException
+	public static void main( final String[] args ) throws IOException, InvalidRangeException
 	{
 		final String tmFilename = "../TrackMate/samples/FakeTracks.xml";
 		final String inputZarrPath = "samples/FakeTracks.zarr/tracks";
@@ -76,7 +77,7 @@ public class Demo
 		viewer.render();
 	}
 
-	public static void write( final String filename, final String outputZarrPath )
+	public static void write( final String filename, final String outputZarrPath ) throws IOException, InvalidRangeException
 	{
 		final TmXmlReader reader = new TmXmlReader( new File( filename ) );
 		if ( !reader.isReadingOk() )
