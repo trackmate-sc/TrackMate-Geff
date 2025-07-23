@@ -8,12 +8,12 @@
  * it under the terms of the GNU General Public License as
  * published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public
  * License along with this program.  If not, see
  * <http://www.gnu.org/licenses/gpl-3.0.html>.
@@ -88,13 +88,13 @@ public class TrackMateGefffWriter
 		final boolean directed = true;
 		final double[] roiMin = getRoiMin( model.getSpots().iterable( false ) );
 		final double[] roiMax = getRoiMax( model.getSpots().iterable( false ) );
-		final String[] axisNames = new String[] { "x", "y", "z", "t" };
+		final String[] axisNames = new String[] { "t", "z", "y", "x" };
 		final String spaceUnits = model.getSpaceUnits();
 		final String timeUnits = model.getTimeUnits();
 		final GeffAxis[] axes = new GeffAxis[ 4 ];
-		for ( int d = 0; d < 3; d++ )
+		axes[ 0 ] = GeffAxis.createTimeAxis( axisNames[ 0 ], timeUnits, roiMin[ 0 ], roiMax[ 0 ] );
+		for ( int d = 1; d < 4; d++ )
 			axes[ d ] = GeffAxis.createSpaceAxis( axisNames[ d ], spaceUnits, roiMin[ d ], roiMax[ d ] );
-		axes[ 3 ] = GeffAxis.createTimeAxis( axisNames[ 3 ], timeUnits, roiMin[ 3 ], roiMax[ 3 ] );
 
 		final GeffMetadata metadata = new GeffMetadata( GEFF_VERSION, directed, axes );
 		GeffMetadata.writeToZarr( metadata, outputZarrPath );
@@ -106,15 +106,17 @@ public class TrackMateGefffWriter
 		final double[] min = new double[] { Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE };
 		for ( final Spot spot : iterable )
 		{
-			for ( int d = 0; d < 3; d++ )
+			final int t = spot.getFeature( Spot.FRAME ).intValue();
+			if ( t < min[ 3 ] )
+				min[ 0 ] = t;
+			for ( int d = 1; d < 4; d++ )
 			{
-				final double pos = spot.getDoublePosition( d );
+				// change axis order. xyz -> zyx
+				final int e = 3 - d;
+				final double pos = spot.getDoublePosition( e );
 				if ( pos < min[ d ] )
 					min[ d ] = pos;
 			}
-			final int t = spot.getFeature( Spot.FRAME ).intValue();
-			if ( t < min[ 3 ] )
-				min[ 3 ] = t;
 		}
 		return min;
 	}
@@ -124,15 +126,17 @@ public class TrackMateGefffWriter
 		final double[] max = new double[] { Double.MIN_VALUE, Double.MIN_VALUE, Double.MIN_VALUE, Double.MIN_VALUE };
 		for ( final Spot spot : iterable )
 		{
-			for ( int d = 0; d < 3; d++ )
+			final int t = spot.getFeature( Spot.FRAME ).intValue();
+			if ( t > max[ 0 ] )
+				max[ 0 ] = t;
+			for ( int d = 1; d < 4; d++ )
 			{
-				final double pos = spot.getDoublePosition( d );
+				// change axis order. xyz -> zyx
+				final int e = 3 - d;
+				final double pos = spot.getDoublePosition( e );
 				if ( pos > max[ d ] )
 					max[ d ] = pos;
 			}
-			final int t = spot.getFeature( Spot.FRAME ).intValue();
-			if ( t > max[ 3 ] )
-				max[ 3 ] = t;
 		}
 		return max;
 	}
