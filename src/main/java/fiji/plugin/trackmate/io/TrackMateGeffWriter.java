@@ -41,6 +41,7 @@ import fiji.plugin.trackmate.Dimension;
 import fiji.plugin.trackmate.FeatureModel;
 import fiji.plugin.trackmate.Model;
 import fiji.plugin.trackmate.Spot;
+import fiji.plugin.trackmate.SpotRoi;
 import fiji.plugin.trackmate.TrackModel;
 import fiji.plugin.trackmate.features.manual.ManualSpotColorAnalyzerFactory;
 import ucar.ma2.InvalidRangeException;
@@ -48,12 +49,11 @@ import ucar.ma2.InvalidRangeException;
 /**
  * Exports a TrackMate model to a GEFF format.
  */
-public class TrackMateGefffWriter
+public class TrackMateGeffWriter
 {
 
-	public static final String GEFF_VERSION = "0.3.0";
+	public static final String GEFF_VERSION = "0.4.0";
 
-	/** The prefix for the GEFF data location in the Zarr file. */
 	public static final String GEFF_PREFIX = "tracking_graph";
 
 	public static void export( final Model model, final String zarrPath ) throws IOException, InvalidRangeException
@@ -166,7 +166,7 @@ public class TrackMateGefffWriter
 				geffEdges.add( geffEdge );
 			}
 		}
-		GeffEdge.writeToZarr( geffEdges, outputZarrPath + "/edges", ZarrUtils.getChunkSize( outputZarrPath ) );
+		GeffEdge.writeToZarr( geffEdges, outputZarrPath, ZarrUtils.getChunkSize( outputZarrPath ), GEFF_VERSION );
 	}
 
 	/**
@@ -207,10 +207,20 @@ public class TrackMateGefffWriter
 					.color( color )
 					.segmentId( segmentId )
 					.build();
+
+			// Polygon, if any.
+			final SpotRoi roi = spot.getRoi();
+			if ( null != roi )
+			{
+				// Coordinates are expected to be relative to spot center.
+				node.setPolygonX( roi.x );
+				node.setPolygonY( roi.y );
+			}
+
 			nodes.add( node );
 		}
 
-		GeffNode.writeToZarr( nodes, outputZarrPath, ZarrUtils.getChunkSize( outputZarrPath ) );
+		GeffNode.writeToZarr( nodes, outputZarrPath, ZarrUtils.getChunkSize( outputZarrPath ), GEFF_VERSION );
 	}
 
 	private static void getColorFromSpot( final Spot spot, final double[] color )

@@ -41,7 +41,7 @@ import fiji.plugin.trackmate.SelectionModel;
 import fiji.plugin.trackmate.TrackMate;
 import fiji.plugin.trackmate.gui.displaysettings.DisplaySettings;
 import fiji.plugin.trackmate.io.IOUtils;
-import fiji.plugin.trackmate.io.TrackMateGefffWriter;
+import fiji.plugin.trackmate.io.TrackMateGeffWriter;
 import fiji.plugin.trackmate.util.TMUtils;
 import ij.IJ;
 
@@ -59,7 +59,7 @@ public class GeffExporterAction extends AbstractTMAction
 			+ "and exchanging it between different tracking software."
 			+ "See the <a url=\"https://live-image-tracking-tools.github.io/geff\">GEFF webpage</a> for details: https://live-image-tracking-tools.github.io/geff"
 			+ "<p>"
-			+ "The supported version of the GEFF format is " + TrackMateGefffWriter.GEFF_VERSION
+			+ "The supported version of the GEFF format is " + TrackMateGeffWriter.GEFF_VERSION
 			+ "</html>";
 
 	public static final ImageIcon ICON = null;
@@ -91,7 +91,7 @@ public class GeffExporterAction extends AbstractTMAction
 		logger.log( "Exporting to GEFF file: " + file.getAbsolutePath() + "\n" );
 		try
 		{
-			TrackMateGefffWriter.export( trackmate.getModel(), file.getAbsolutePath() );
+			TrackMateGeffWriter.export( trackmate.getModel(), file.getAbsolutePath() );
 			logger.log( "Export completed.\n" );
 		}
 		catch ( final Exception e )
