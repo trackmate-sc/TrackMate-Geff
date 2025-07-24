@@ -1,25 +1,7 @@
-/*-
- * #%L
- * TrackMate: your buddy for everyday tracking.
- * %%
- * Copyright (C) 2025 TrackMate developers.
- * %%
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public
- * License along with this program.  If not, see
- * <http://www.gnu.org/licenses/gpl-3.0.html>.
- * #L%
- */
 package fiji.plugin.trackmate.io;
+
+import static fiji.plugin.trackmate.io.TrackMateGeffWriter.GEFF_PREFIX;
+import static fiji.plugin.trackmate.io.TrackMateGeffWriter.GEFF_VERSION;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -40,55 +22,46 @@ import org.mastodon.geff.GeffNode;
 import fiji.plugin.trackmate.Model;
 import fiji.plugin.trackmate.Spot;
 import fiji.plugin.trackmate.SpotCollection;
+import fiji.plugin.trackmate.SpotRoi;
 import ucar.ma2.InvalidRangeException;
 
-public class TrackMateGeffIO
+public class TrackMateGeffReader
 {
 
-	public static Model readFromGeff( final String inputZarrPath )
+	public static Model readModel( final String inputZarrPath ) throws IOException, InvalidRangeException
 	{
-		final Model model = new Model();
+		return readModel( inputZarrPath, new Model() );
+	}
+
+	public static Model readModel( final String zarrPath, final Model model ) throws IOException, InvalidRangeException
+	{
+		// Geff is a subfolder of the Zarr file.
+		final String inputZarrPath = zarrPath.endsWith( "/" ) ? zarrPath + GEFF_PREFIX : zarrPath + "/" + GEFF_PREFIX;
 
 		// Read the metadata.
-		try
-		{
-			final GeffMetadata metadata = GeffMetadata.readFromZarr( inputZarrPath );
-			final int xAxis = findSpatialAxis( metadata.getGeffAxes() );
-			final String spaceUnits = metadata.getGeffAxes()[ xAxis ].getUnit();
-			final int tAxis = findTemporalAxis( metadata.getGeffAxes() );
-			final String timeUnits = metadata.getGeffAxes()[ tAxis ].getUnit();
-			model.setPhysicalUnits( spaceUnits, timeUnits );
-		}
-		catch ( IOException | InvalidRangeException e )
-		{
-			e.printStackTrace();
-		}
+		final GeffMetadata metadata = GeffMetadata.readFromZarr( inputZarrPath );
+		final int xAxis = findSpatialAxis( metadata.getGeffAxes() );
+		final String spaceUnits = metadata.getGeffAxes()[ xAxis ].getUnit();
+		final int tAxis = findTemporalAxis( metadata.getGeffAxes() );
+		final String timeUnits = metadata.getGeffAxes()[ tAxis ].getUnit();
+		model.setPhysicalUnits( spaceUnits, timeUnits );
 
-		try
-		{
-			// Read the nodes (spots).
-			final List< GeffNode > nodes = GeffNode.readFromZarr( inputZarrPath );
-			final SpotCollection spots = toSpotCollection( nodes );
-			model.setSpots( spots, false );
+		// Read the nodes (spots).
+		final List< GeffNode > nodes = GeffNode.readFromZarr( inputZarrPath, GEFF_VERSION );
+		final SpotCollection spots = toSpotCollection( nodes );
+		model.setSpots( spots, false );
 
-			// Read the edges.
-			final List< GeffEdge > geffEdges = GeffEdge.readFromZarr( inputZarrPath );
-			System.out.println( geffEdges.size() + " edges found." );
-			final SimpleWeightedGraph< Spot, DefaultWeightedEdge > graph = toGraph( geffEdges, spots );
-			setTrackModel( model, graph );
-
-		}
-		catch ( IOException | InvalidRangeException e )
-		{
-			e.printStackTrace();
-		}
+		// Read the edges.
+		final List< GeffEdge > geffEdges = GeffEdge.readFromZarr( inputZarrPath, GEFF_VERSION );
+		System.out.println( geffEdges.size() + " edges found." );
+		final SimpleWeightedGraph< Spot, DefaultWeightedEdge > graph = toGraph( geffEdges, spots );
+		setTrackModel( model, graph );
 
 		return model;
 	}
 
 	private static void setTrackModel( final Model model, final SimpleWeightedGraph< Spot, DefaultWeightedEdge > graph )
 	{
-		System.out.println( graph ); // DEBUG
 		final ConnectivityInspector< Spot, DefaultWeightedEdge > inspector = new ConnectivityInspector<>( graph );
 		final List< Set< Spot > > trackSpots = inspector.connectedSets();
 		System.out.println( "Found " + trackSpots.size() + " tracks." );
@@ -173,6 +146,16 @@ public class TrackMateGeffIO
 			spot.putFeature( Spot.FRAME, ( double ) tp );
 			spot.putFeature( Spot.RADIUS, r );
 
+			// Do we have polygons?
+			final double[] xp = node.getPolygonX();
+			if ( xp != null && xp.length > 0 )
+			{
+				// Coordinates are expected to be relative to spot center.
+				final double[] yp = node.getPolygonY();
+				final SpotRoi roi = new SpotRoi( xp, yp );
+				spot.setRoi( roi );
+			}
+
 			spotMap.computeIfAbsent( tp, k -> new ArrayList<>() ).add( spot );
 		}
 
@@ -207,5 +190,4 @@ public class TrackMateGeffIO
 		}
 		return -1;
 	}
-
 }
