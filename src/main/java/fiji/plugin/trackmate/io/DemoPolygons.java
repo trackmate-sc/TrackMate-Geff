@@ -8,12 +8,12 @@
  * it under the terms of the GNU General Public License as
  * published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public
  * License along with this program.  If not, see
  * <http://www.gnu.org/licenses/gpl-3.0.html>.
@@ -25,14 +25,22 @@ import java.io.File;
 import java.io.IOException;
 
 import fiji.plugin.trackmate.Model;
+import fiji.plugin.trackmate.SelectionModel;
+import fiji.plugin.trackmate.Settings;
+import fiji.plugin.trackmate.TrackMate;
+import fiji.plugin.trackmate.gui.displaysettings.DisplaySettings;
+import fiji.plugin.trackmate.gui.wizard.TrackMateWizardSequence;
+import fiji.plugin.trackmate.visualization.hyperstack.HyperStackDisplayer;
+import ij.ImageJ;
+import ij.ImagePlus;
 import ucar.ma2.InvalidRangeException;
 
 public class DemoPolygons
 {
 	public static void main( final String[] args ) throws IOException, InvalidRangeException
 	{
-		final String filename = "samples/ MAX_Merged.xml";
-		final String outputZarrPath = "samples/MAX_Merged.zarr/tracks";
+		final String filename = "samples/MAX_Merged.xml";
+		final String outputZarrPath = "samples/MAX_Merged.geff";
 
 		final TmXmlReader reader = new TmXmlReader( new File( filename ) );
 		if ( !reader.isReadingOk() )
@@ -42,7 +50,35 @@ public class DemoPolygons
 		}
 
 		final Model model = reader.getModel();
-		TrackMateGefffWriter.export( model, outputZarrPath );
-	}
 
+		/*
+		 * 1. Export to GEFF
+		 */
+
+		TrackMateGeffWriter.export( model, outputZarrPath );
+
+		/*
+		 * 2. Reload from GEFF
+		 */
+
+		final Model importedModel = TrackMateGeffReader.readModel( outputZarrPath );
+
+		/*
+		 * 3. Display in TrackMate
+		 */
+
+		final ImagePlus imp = reader.readImage();
+		final Settings settings = reader.readSettings( imp );
+		final DisplaySettings ds = reader.getDisplaySettings();
+		final TrackMate trackmate = new TrackMate( importedModel, settings );
+
+		ImageJ.main( args );
+		final SelectionModel selectionModel = new SelectionModel( importedModel );
+
+		new HyperStackDisplayer( model, selectionModel, imp, ds ).render();
+
+		final TrackMateWizardSequence sequence = new TrackMateWizardSequence( trackmate, selectionModel, ds );
+		sequence.setCurrent( "ConfigureViews" );
+		sequence.run( "Imported from GEFF" ).setVisible( true );
+	}
 }
