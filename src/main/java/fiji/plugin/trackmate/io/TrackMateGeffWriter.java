@@ -23,12 +23,15 @@ package fiji.plugin.trackmate.io;
 
 import java.awt.Color;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.io.FileUtils;
 import org.jgrapht.graph.DefaultWeightedEdge;
 import org.mastodon.geff.GeffAxis;
 import org.mastodon.geff.GeffEdge;
@@ -54,9 +57,14 @@ public class TrackMateGeffWriter
 
 	public static final String GEFF_VERSION = "0.4.0";
 
-	public static final String GEFF_PREFIX = "tracking_graph";
+	public static final String GEFF_PREFIX = "trackmate.geff";
 
 	public static void export( final Model model, final String zarrPath ) throws IOException, InvalidRangeException
+	{
+		export( model, zarrPath, false );
+	}
+
+	public static void export( final Model model, final String zarrPath, final boolean is2d ) throws IOException, InvalidRangeException
 	{
 		// Geff is a subfolder of the Zarr file.
 		final String outputZarrPath = zarrPath.endsWith( "/" ) ? zarrPath + GEFF_PREFIX : zarrPath + "/" + GEFF_PREFIX;
@@ -64,7 +72,7 @@ public class TrackMateGeffWriter
 		final FeatureModel featureModel = model.getFeatureModel();
 
 		// Serialize spots.
-		serializeSpots( model.getSpots().iterable( false ), model.getTrackModel(), outputZarrPath );
+		serializeSpots( model.getSpots().iterable( false ), model.getTrackModel(), outputZarrPath, is2d );
 
 		// Serialize edges.
 		final TrackModel trackModel = model.getTrackModel();
@@ -85,16 +93,24 @@ public class TrackMateGeffWriter
 		serializeFeatureDeclarations( featureModel );
 
 		// GEFF metadata.
+
 		final boolean directed = true;
 		final double[] roiMin = getRoiMin( model.getSpots().iterable( false ) );
 		final double[] roiMax = getRoiMax( model.getSpots().iterable( false ) );
-		final String[] axisNames = new String[] { "t", "z", "y", "x" };
+		final String[] axisNames = is2d
+				? new String[] { "t", "y", "x" }
+				: new String[] { "t", "z", "y", "x" };
 		final String spaceUnits = model.getSpaceUnits();
 		final String timeUnits = model.getTimeUnits();
-		final GeffAxis[] axes = new GeffAxis[ 4 ];
+
+		final int nDims = is2d ? 3 : 4;
+		final GeffAxis[] axes = new GeffAxis[ nDims ];
 		axes[ 0 ] = GeffAxis.createTimeAxis( axisNames[ 0 ], timeUnits, roiMin[ 0 ], roiMax[ 0 ] );
-		for ( int d = 1; d < 4; d++ )
-			axes[ d ] = GeffAxis.createSpaceAxis( axisNames[ d ], spaceUnits, roiMin[ d ], roiMax[ d ] );
+		for ( int d = 1; d < nDims; d++ )
+		{
+			final int rd = is2d ? d + 1 : d; // skip z
+			axes[ d ] = GeffAxis.createSpaceAxis( axisNames[ d ], spaceUnits, roiMin[ rd ], roiMax[ rd ] );
+		}
 
 		final GeffMetadata metadata = new GeffMetadata( GEFF_VERSION, directed, axes );
 		GeffMetadata.writeToZarr( metadata, outputZarrPath );
@@ -182,10 +198,11 @@ public class TrackMateGeffWriter
 	 *            serialized.
 	 * @param trackModel
 	 *            the TrackModel to retrieve track IDs for the spots.
+	 * @param is2d
 	 * @throws InvalidRangeException
 	 * @throws IOException
 	 */
-	private static void serializeSpots( final Iterable< Spot > iterable, final TrackModel trackModel, final String outputZarrPath ) throws IOException, InvalidRangeException
+	private static void serializeSpots( final Iterable< Spot > iterable, final TrackModel trackModel, final String outputZarrPath, final boolean is2d ) throws IOException, InvalidRangeException
 	{
 		final List< GeffNode > nodes = new ArrayList<>();
 		final Builder builder = GeffNode.builder();
@@ -197,16 +214,18 @@ public class TrackMateGeffWriter
 			final Integer segmentIdObj = trackModel.trackIDOf( spot );
 			final int segmentId = segmentIdObj != null ? segmentIdObj : -1;
 
-			final GeffNode node = builder
+			builder
 					.x( spot.getDoublePosition( 0 ) )
 					.y( spot.getDoublePosition( 1 ) )
-					.z( spot.getDoublePosition( 2 ) )
 					.timepoint( spot.getFeature( Spot.FRAME ).intValue() )
 					.id( spot.ID() )
 					.radius( spot.getFeature( Spot.RADIUS ).doubleValue() )
 					.color( color )
-					.segmentId( segmentId )
-					.build();
+					.segmentId( segmentId );
+			if ( !is2d )
+				builder.z( spot.getDoublePosition( 2 ) );
+
+			final GeffNode node = builder.build();
 
 			// Polygon, if any.
 			final SpotRoi roi = spot.getRoi();
@@ -216,11 +235,19 @@ public class TrackMateGeffWriter
 				node.setPolygonX( roi.x );
 				node.setPolygonY( roi.y );
 			}
-
 			nodes.add( node );
 		}
-
 		GeffNode.writeToZarr( nodes, outputZarrPath, ZarrUtils.getChunkSize( outputZarrPath ), GEFF_VERSION );
+
+		// TODO acquaint to is2d when we can skip writing z.
+		// In the meantime, we delete the folder
+		if ( is2d )
+		{
+			final Path zarrPath = Paths.get( outputZarrPath );
+			final Path zFolder = zarrPath.resolve( "nodes/props/z" );
+			if ( zFolder.toFile().exists() )
+				FileUtils.deleteDirectory( zFolder.toFile() );
+		}
 	}
 
 	private static void getColorFromSpot( final Spot spot, final double[] color )
@@ -340,5 +367,4 @@ public class TrackMateGeffWriter
 	{
 		// TODO
 	}
-
 }

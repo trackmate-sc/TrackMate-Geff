@@ -8,12 +8,12 @@
  * it under the terms of the GNU General Public License as
  * published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public
  * License along with this program.  If not, see
  * <http://www.gnu.org/licenses/gpl-3.0.html>.
@@ -40,6 +40,7 @@ import org.scijava.plugin.Plugin;
 import fiji.plugin.trackmate.SelectionModel;
 import fiji.plugin.trackmate.TrackMate;
 import fiji.plugin.trackmate.gui.displaysettings.DisplaySettings;
+import fiji.plugin.trackmate.io.GeffIOUtils;
 import fiji.plugin.trackmate.io.IOUtils;
 import fiji.plugin.trackmate.io.TrackMateGeffWriter;
 import fiji.plugin.trackmate.util.TMUtils;
@@ -91,7 +92,8 @@ public class GeffExporterAction extends AbstractTMAction
 		logger.log( "Exporting to GEFF file: " + file.getAbsolutePath() + "\n" );
 		try
 		{
-			TrackMateGeffWriter.export( trackmate.getModel(), file.getAbsolutePath() );
+			final boolean is2D = GeffIOUtils.is2D( trackmate );
+			TrackMateGeffWriter.export( trackmate.getModel(), file.getAbsolutePath(), is2D );
 			logger.log( "Export completed.\n" );
 		}
 		catch ( final Exception e )
