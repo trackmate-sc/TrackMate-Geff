@@ -27,7 +27,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,15 +34,14 @@ import java.util.function.ToDoubleFunction;
 import java.util.function.ToIntFunction;
 
 import org.apache.commons.io.FileUtils;
+import org.janelia.saalfeldlab.n5.zarr.N5ZarrWriter;
 import org.jgrapht.graph.DefaultWeightedEdge;
 import org.mastodon.geff.GeffAxis;
 import org.mastodon.geff.GeffEdge;
 import org.mastodon.geff.GeffMetadata;
 import org.mastodon.geff.GeffNode;
 import org.mastodon.geff.GeffNode.Builder;
-import org.mastodon.geff.ZarrUtils;
-
-import com.bc.zarr.ZarrGroup;
+import org.mastodon.geff.GeffUtils;
 
 import fiji.plugin.trackmate.Dimension;
 import fiji.plugin.trackmate.FeatureModel;
@@ -52,7 +50,6 @@ import fiji.plugin.trackmate.Spot;
 import fiji.plugin.trackmate.SpotRoi;
 import fiji.plugin.trackmate.TrackModel;
 import fiji.plugin.trackmate.features.manual.ManualSpotColorAnalyzerFactory;
-import ucar.ma2.InvalidRangeException;
 
 /**
  * Exports a TrackMate model to a GEFF format.
@@ -64,16 +61,15 @@ public class TrackMateGeffWriter
 
 	public static final String GEFF_PREFIX = "trackmate.geff";
 
-	public static void export( final Model model, final String zarrPath ) throws IOException, InvalidRangeException
+	public static void export( final Model model, final String zarrPath ) throws IOException
 	{
 		export( model, zarrPath, false );
 	}
 
-	public static void export( final Model model, final String zarrPath, final boolean is2d ) throws IOException, InvalidRangeException
+	public static void export( final Model model, final String zarrPath, final boolean is2d ) throws IOException
 	{
 		// Geff is a subfolder of the Zarr file.
 		final String outputZarrPath = zarrPath.endsWith( "/" ) ? zarrPath + GEFF_PREFIX : zarrPath + "/" + GEFF_PREFIX;
-
 
 		// Serialize spots.
 		final FeatureModel featureModel = model.getFeatureModel();
@@ -105,8 +101,8 @@ public class TrackMateGeffWriter
 		final String[] axisNames = is2d
 				? new String[] { "t", "y", "x" }
 				: new String[] { "t", "z", "y", "x" };
-		final String spaceUnits = model.getSpaceUnits();
-		final String timeUnits = model.getTimeUnits();
+		final String spaceUnits = GeffIOUtils.toOMEZarrUnits( model.getSpaceUnits() );
+		final String timeUnits = GeffIOUtils.toOMEZarrUnits( model.getTimeUnits() );
 
 		final int nDims = is2d ? 3 : 4;
 		final GeffAxis[] axes = new GeffAxis[ nDims ];
@@ -166,7 +162,7 @@ public class TrackMateGeffWriter
 			final TrackModel trackModel,
 			final FeatureModel featureModel,
 			final String outputZarrPath )
-			throws IOException, InvalidRangeException
+			throws IOException
 	{
 		final List< GeffEdge > geffEdges = new ArrayList<>();
 		final Set< Integer > trackIDs = trackModel.trackIDs( false );
@@ -187,7 +183,7 @@ public class TrackMateGeffWriter
 				geffEdges.add( geffEdge );
 			}
 		}
-		GeffEdge.writeToZarr( geffEdges, outputZarrPath, ZarrUtils.getChunkSize( outputZarrPath ), GEFF_VERSION );
+		GeffEdge.writeToZarr( geffEdges, outputZarrPath, GeffUtils.getChunkSize( outputZarrPath ), GEFF_VERSION );
 	}
 
 	/**
@@ -210,13 +206,15 @@ public class TrackMateGeffWriter
 	 * @throws InvalidRangeException
 	 * @throws IOException
 	 */
-	private static void serializeSpots( final Iterable< Spot > iterable, final FeatureModel featureModel, final TrackModel trackModel, final String outputZarrPath, final boolean is2d ) throws IOException, InvalidRangeException
+	private static void serializeSpots( final Iterable< Spot > iterable, final FeatureModel featureModel, final TrackModel trackModel, final String outputZarrPath, final boolean is2d ) throws IOException
 	{
 		final List< GeffNode > nodes = new ArrayList<>();
-		final Map< Integer, Spot > spotMap = new HashMap<>();
+		final List< Spot > spots = new ArrayList<>();
 		final Builder builder = GeffNode.builder();
 		for ( final Spot spot : iterable )
 		{
+			spots.add( spot );
+
 			final double[] color = new double[ 4 ];
 			getColorFromSpot( spot, color );
 
@@ -245,9 +243,8 @@ public class TrackMateGeffWriter
 				node.setPolygonY( roi.y );
 			}
 			nodes.add( node );
-			spotMap.put( node.getId(), spot );
 		}
-		GeffNode.writeToZarr( nodes, outputZarrPath, ZarrUtils.getChunkSize( outputZarrPath ), GEFF_VERSION );
+		GeffNode.writeToZarr( nodes, outputZarrPath, GeffUtils.getChunkSize( outputZarrPath ), GEFF_VERSION );
 
 		// TODO acquaint to is2d when we can skip writing z.
 		// In the meantime, we delete the folder
@@ -259,34 +256,40 @@ public class TrackMateGeffWriter
 				FileUtils.deleteDirectory( zFolder.toFile() );
 		}
 
-		// Write feature values for the spots.
-		final ZarrGroup attrsGroup = ZarrGroup.open( outputZarrPath + "/nodes/props" );
-		final int chunkSize = ZarrUtils.getChunkSize( outputZarrPath );
+		/*
+		 * Write feature values for the spots.
+		 */
 
-		final Map< String, Boolean > isIntMap = featureModel.getSpotFeatureIsInt();
+		// Make a N5 writer.
 
-		for ( final String key : featureModel.getSpotFeatures() )
+		try (final N5ZarrWriter writer = new N5ZarrWriter( outputZarrPath, true ))
 		{
-			final boolean isInt = isIntMap.get( key );
-			if ( isInt )
+			final int chunkSize = GeffUtils.getChunkSize( outputZarrPath );
+
+			final Map< String, Boolean > isIntMap = featureModel.getSpotFeatureIsInt();
+			for ( final String key : featureModel.getSpotFeatures() )
 			{
-				final ToIntFunction< GeffNode > function = n -> {
-					final Double obj = spotMap.get( n.getId() ).getFeature( key );
-					if ( null == obj )
-						return Integer.MIN_VALUE;
-					return obj.intValue();
-				};
-				ZarrUtils.writeChunkedIntAttribute( nodes, attrsGroup, key + "/values", chunkSize, function );
-			}
-			else
-			{
-				final ToDoubleFunction< GeffNode > function = n -> {
-					final Double obj = spotMap.get( n.getId() ).getFeature( key );
-					if ( null == obj )
-						return Double.NaN;
-					return obj.doubleValue();
-				};
-				ZarrUtils.writeChunkedDoubleAttribute( nodes, attrsGroup, key + "/values", chunkSize, function );
+				final boolean isInt = isIntMap.get( key );
+				if ( isInt )
+				{
+					final ToIntFunction< Spot > function = s -> {
+						final Double obj = s.getFeature( key );
+						if ( null == obj )
+							return Integer.MIN_VALUE;
+						return obj.intValue();
+					};
+					GeffUtils.writeIntArray( spots, function, writer, "/nodes/props/" + key + "/values", chunkSize );
+				}
+				else
+				{
+					final ToDoubleFunction< Spot > function = s -> {
+						final Double obj = s.getFeature( key );
+						if ( null == obj )
+							return Double.NaN;
+						return obj.doubleValue();
+					};
+					GeffUtils.writeDoubleArray( spots, function, writer, "/nodes/props/" + key + "/values", chunkSize );
+				}
 			}
 		}
 	}

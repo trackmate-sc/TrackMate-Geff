@@ -10,6 +10,54 @@ import ij.ImagePlus;
 public class GeffIOUtils
 {
 
+	/**
+	 * Converts a unit string to the OME-Zarr format.
+	 * <p>
+	 * OME-Zarr spatial units:
+	 *
+	 * <pre>
+	 * "angstrom", "attometer", "centimeter", "decimeter", "exameter", "femtometer",
+	 * "foot", "gigameter", "hectometer", "inch", "kilometer", "megameter", "meter",
+	 * "micrometer", "mile", "millimeter", "nanometer", "parsec", "petameter",
+	 * "picometer", "terameter", "yard", "yoctometer", "yottameter", "zeptometer",
+	 * "zettameter"
+	 * </pre>
+	 * <p>
+	 * OME-Zarr time units:
+	 *
+	 * <pre>
+	 * 'attosecond', 'centisecond', 'day', 'decisecond', 'exasecond', 'femtosecond',
+	 * 'gigasecond', 'hectosecond', 'hour', 'kilosecond', 'megasecond', 'microsecond',
+	 * 'millisecond', 'minute', 'nanosecond', 'petasecond', 'picosecond', 'second',
+	 * 'terasecond', 'yoctosecond', 'yottasecond', 'zeptosecond', 'zettasecond'
+	 * </pre>
+	 *
+	 * @param unit
+	 *            the unit string to convert, e.g., "micrometer", "nm", "pixel",
+	 *            etc.
+	 * @return the corresponding OME-Zarr unit string if we know how to convert
+	 *         the input.
+	 */
+	public static final String toOMEZarrUnits( final String unit )
+	{
+		if ( unit.toLowerCase().startsWith( "micro" ) || unit.toLowerCase().startsWith( "µm" ) )
+			return "micrometer";
+
+		if ( unit.toLowerCase().startsWith( "nano" ) || unit.toLowerCase().startsWith( "nm" ) )
+			return "nanometer";
+
+		if ( unit.toLowerCase().startsWith( "min" ) )
+			return "minute";
+
+		if ( unit.toLowerCase().startsWith( "sec" ) )
+			return "second";
+
+		if ( unit.toLowerCase().startsWith( "ms" ) )
+			return "millisecond";
+
+		return unit.toLowerCase();
+	}
+
 	public static final boolean is2D( final Model model )
 	{
 		final AtomicBoolean is2dFlag = new AtomicBoolean( true );

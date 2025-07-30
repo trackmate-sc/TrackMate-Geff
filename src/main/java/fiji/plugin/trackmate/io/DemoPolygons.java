@@ -33,14 +33,13 @@ import fiji.plugin.trackmate.gui.wizard.TrackMateWizardSequence;
 import fiji.plugin.trackmate.visualization.hyperstack.HyperStackDisplayer;
 import ij.ImageJ;
 import ij.ImagePlus;
-import ucar.ma2.InvalidRangeException;
 
 public class DemoPolygons
 {
-	public static void main( final String[] args ) throws IOException, InvalidRangeException
+	public static void main( final String[] args ) throws IOException
 	{
 		final String filename = "samples/MAX_Merged.xml";
-		final String outputZarrPath = "samples/MAX_Merged.geff";
+		final String outputZarrPath = "samples/MAX_Merged.zarr";
 
 		final TmXmlReader reader = new TmXmlReader( new File( filename ) );
 		if ( !reader.isReadingOk() )

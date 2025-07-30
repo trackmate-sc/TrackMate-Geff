@@ -23,17 +23,16 @@ import fiji.plugin.trackmate.Model;
 import fiji.plugin.trackmate.Spot;
 import fiji.plugin.trackmate.SpotCollection;
 import fiji.plugin.trackmate.SpotRoi;
-import ucar.ma2.InvalidRangeException;
 
 public class TrackMateGeffReader
 {
 
-	public static Model readModel( final String inputZarrPath ) throws IOException, InvalidRangeException
+	public static Model readModel( final String inputZarrPath ) throws IOException
 	{
 		return readModel( inputZarrPath, new Model() );
 	}
 
-	public static Model readModel( final String zarrPath, final Model model ) throws IOException, InvalidRangeException
+	public static Model readModel( final String zarrPath, final Model model ) throws IOException
 	{
 		// Geff is a subfolder of the Zarr file.
 		final String inputZarrPath = zarrPath.endsWith( "/" ) ? zarrPath + GEFF_PREFIX : zarrPath + "/" + GEFF_PREFIX;
